@@ -1,0 +1,301 @@
+---
+title: 'IMT 573: Problem Set 3 - Working With Data II'
+author: "Saurabh Sharma"
+date: 'Due: Tuesday, October 22, 2019'
+output: pdf_document
+---
+
+<!-- This syntax can be used to add comments that are ignored during knitting process. -->
+
+##### Collaborators: <!-- BE SURE TO LIST ALL COLLABORATORS HERE! -->
+
+##### Instructions:
+
+Before beginning this assignment, please ensure you have access to R and RStudio; this can be on your own personal computer or on the IMT 573 R Studio Server. 
+
+1. Download the `problemset3.Rmd` file from Canvas or save a copy to your local directory on RStudio Server. Open `problemset3.Rmd` in RStudio and supply your solutions to the assignment by editing `problemset3.Rmd`. 
+
+2. Replace the "Insert Your Name Here" text in the `author:` field with your own full name. Any collaborators must be listed on the top of your assignment. 
+
+3. Be sure to include well-documented (e.g. commented) code chucks, figures, and clearly written text chunk explanations as necessary. Any figures should be clearly labeled and appropriately referenced within the text. Be sure that each visualization adds value to your written explanation; avoid redundancy -- you do not need four different visualizations of the same pattern.
+
+4.  Collaboration on problem sets is fun and useful, and we encourage it, but each student must turn in an individual write-up in their own words as well as code/work that is their own.  Regardless of whether you work with others, what you turn in must be your own work; this includes code and interpretation of results. The names of all collaborators must be listed on each assignment. Do not copy-and-paste from other students' responses or code.
+
+5. All materials and resources that you use (with the exception of lecture slides) must be appropriately referenced within your assignment.  
+
+6. Remember partial credit will be awarded for each question for which a serious attempt at finding an answer has been shown. Students are \emph{strongly} encouraged to attempt each question and to document their reasoning process even if they cannot find the correct answer. If you would like to include R code to show this process, but it does not run without errors, you can do so with the `eval=FALSE` option as follows:
+
+```{r example chunk with a bug, eval=FALSE}
+a + b # these object dont' exist 
+# if you run this on its own it with give an error
+```
+
+7. When you have completed the assignment and have **checked** that your code both runs in the Console and knits correctly when you click `Knit PDF`, rename the knitted PDF file to `ps3_YourLastName_YourFirstName.pdf`, and submit the PDF file on Canvas.
+
+##### Setup: 
+
+In this problem set you will need, at minimum, the following R packages.
+
+```{r Setup, message=FALSE}
+# Load standard libraries
+install.packages("arsenal",repos = "http://cran.us.r-project.org")
+library('dplyr')
+library('censusr')
+library('stringr')
+library('ggplot2')
+library('arsenal')
+```
+
+#### Problem 1: Joining census data to police reports
+
+In this problem set, we will be joining disparate sets of data - namely: Seattle police crime data, information on Seattle police beats, and education attainment from the US Census. Our ultimate goal is to build a dataset where we can examine questions around crimes in Seattle and the educational attainment of people living in the areas in which the crime occurred.
+
+As a general rule, be sure to keep copies of the original dataset(s) as you work through cleaning (remember data provenance).
+
+##### (a) Importing and Inspecting Crime Data
+
+Load the Seattle crime data (crime_data.csv). You can find more information on the data here: (https://data.seattle.gov/Public-Safety/Crime-Data/4fs7-3vj5). This dataset is constantly refreshed online so we will be using the csv file for consistency. We will henceforth call this dataset the "Crime Dataset." Perform a basic inspection of the Crime Dataset and discuss what you find.
+
+```{r}
+# add your R code here
+crime_dataset <- read.csv("crime_data.csv")
+crime_df <- tbl_df(crime_dataset) # transform the data into a data frame tbl
+head(crime_df,6)
+tail(crime_df,6)
+str(crime_df)
+nrow(crime_df)
+ncol(crime_df)
+summary(crime_df)
+dim(crime_df)
+
+```
+
+
+We have been given the crime data set of Seattle city. In the dataset each row represents a unique crime. There is report number in numerical format. The two dates when crime occurred and crime reported are mentioned. The crimes reported have other categories such as precinct, sector, beat and neighbourhood as factor variables. Times are in int format. Also, we found that there are a total of 523591 records available to us for data exploration.
+
+##### (b) Looking at Years That Crimes Were Committed
+
+Let's start by looking at the years in which crimes were committed. What is the earliest year in the dataset? Are there any distinct trends with the annual number of crimes committed in the dataset?
+
+```{r}
+# add your R code here
+crime_df$Occurred.Date <-as.Date(crime_df$Occurred.Date, format = "%m/%d/%Y")
+#We have converted the occurred date in date format
+
+
+typeof(crime_df$Occurred.Date)
+crime_df %>% arrange((crime_df$Occurred.Date))
+#Arrnged in ascending order to get the earliest crime occured date which is  12/13/1908
+
+
+crime_df$Occurred.Date<-format(as.Date(crime_df$Occurred.Date, format="%m/%d/%Y"),"%Y")
+
+
+yearvscrime<-crime_df %>% 
+  group_by(crime_df$Occurred.Date) %>%
+summarise(total_rec_by_group = n()) 
+#grouped according to year to get the year vs crime pattern.
+yearvscrime
+
+hist(as.numeric(crime_df$Occurred.Date),xlim=c(1907,2020),breaks = 100, col = "orange", xlab ="Year",main="Histogram for Crime Frequency")
+
+```
+When we looked at the year wise trend we found that the earliest crime that occurred is in 1908. As we can see from the histogram we plotted that the crimes rates are negligible in the years before 2000. After 2000, there is slight increase in the crime rates. But from 2008, there is a drastic increase in the number of crimes.
+
+
+
+Let's subset the data to only include crimes that were committed after 2011 (remember good practices of data provenance!). Going forward, we will use this data subset.
+
+```{r}
+# add your R code here
+crime_df_2 <-filter(crime_df, crime_df$Occurred.Date>2011)
+dim(crime_df_2)
+#Applying filters to get dataset  for crimes committed after 2011
+
+```
+Now, we see tht we have 350053 records after filtering out records before 2012.
+##### (c) Looking at Frequency of Beats
+
+How frequently are the beats in the Crime Dataset listed? Are there any anomolies with how frequently some of the beats are listed? Are there missing beats?
+```{r}
+
+# crime_df_2_ByBeat <- crime_df_2 %>% group_by(Beat) %>% summarise(BeatFrequency = n_distinct(Report.Number))%>%arrange(BeatFrequency)
+beat_freq_tab <-crime_df_2 %>% group_by(Beat) %>% summarise(BeatFrequency = n()) 
+beat_freq_tab <- tbl_df(beat_freq_tab)
+beat_freq_tab <-  is.numeric(beat_freq_tab$BeatFrequency)
+#anamoly is the missing beat with beat frequency = 2054
+View(beat_freq_tab)
+ggplot(crime_df_2,aes(x= Beat)) + geom_histogram(stat="count") +
+theme_bw() + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+sum(is.na(crime_df_2$Beat)) #na values coming zero using this function but this is not the actual case
+```
+When we explored the data for crimes after 2011, we found that there are 2054 rows for which beat is missing. Also, we tried to apply the funtion is.na, which shows us different results than the actual missing Beats. We also found out that the beat with maximum crimes is K.
+
+##### (d) Importing Police Beat Data and Filtering on Frequency
+
+Load the data on Seattle police beats (police_beat_and_precinct_centerpoints.csv). You can find additional information on the data here: (https://data.seattle.gov/Land-Base/Police-Beat-and-Precinct-Centerpoints/4khs-fz35) and more information on what a police beat is here: https://en.wikipedia.org/wiki/Beat_(police). We will henceforth call this dataset the "Beats Dataset."
+
+```{r}
+Beats_dataset <- read.csv("police_beat_and_precinct_centerpoints.csv")
+Beats_df <- tbl_df(Beats_dataset) # transform the data into a data frame tbl
+```
+
+Does the Crime Dataset include police beats that are not present in the Beats Dataset? If so, how many and with what frequency do they occur? Would you say that these comprise a large number of the observations in the Crime Dataset or are they rather infrequent? Do you think removing them would drastically alter the scope of the Crime Dataset?
+
+```{r}
+# add your R code here
+length(unique(crime_df_2$Beat))
+#general analysis to uderstand the dimension of beats in both the datasets
+length(unique(Beats_dataset$Name))
+
+#names of beats in datasets
+df_beats_table <-unique(Beats_dataset$Name)
+df_crime_table <-unique(crime_df_2$Beat)
+
+#Finding out the beats in Crime dataset which are not in Beat data set
+df_crime_table[!(df_crime_table %in% df_beats_table)]
+
+#finding the number of the records corresponding to the beats which are missing in the Beats table
+length(crime_df_2$Beat[crime_df_2$Beat=="S"])
+length(crime_df_2$Beat[crime_df_2$Beat=="SS"])
+length(crime_df_2$Beat[crime_df_2$Beat=="DET"])
+length(crime_df_2$Beat[crime_df_2$Beat=="CTY"])
+length(crime_df_2$Beat[crime_df_2$Beat=="WS"])
+length(crime_df_2$Beat[crime_df_2$Beat=="K"])
+
+
+```
+We found that there are 7 categories for which there are some beats in Crime dataset but not in beats table. Those beats are "S","SS","DET","CTY","WS","K and there is a category also of the missing beats. These records do not comprise of the large parts of the dataset and rather they are infrequent. I think that removing them would not drastically alter the results of our exploration.
+
+Let's remove all instances in the Crime Dataset that have beats which occur fewer than 10 times across the Crime Dataset. Also remove any observations with missing beats. After only keeping years of interest and filtering based on frequency of the beat, how many observations do we now have in the Crime Dataset?
+
+```{r}
+crime_df_2 %>% 
+  group_by(crime_df_2$Beat) %>% 
+  mutate(freq = n()) %>% 
+  ungroup() %>% 
+  filter(freq >9) %>%
+  select(-freq)
+#Removing the records whose beats occur less than 10 times
+
+dim(crime_df_2)
+
+crime_df_2 <-  crime_df_2[!(crime_df_2$Beat==""),]
+#Removing the records for which the beats are missing
+#350,034 
+```
+We removed the records for which beats were less than 10 and also the beats which were missing. We have total of 347,999 observations after doing this process.
+##### (e) Importing and Inspecting Police Beat Data
+
+To join the Beat Dataset to census data, we must have census tract information. 
+
+First, let's remove the beats in the Beats Dataset that are not listed in the (cleaned) Crime Dataset.
+
+Then, let's use the censusr package to extract the 15-digit census tract for each police beat using the corresponding latitude and longitude. Do this using each of the police beats listed in the Beats Dataset. Do not use a for-loop for this but instead rely on R functions (e.g. the 'apply' family of functions). Add a column to the Beat Dataset that contains the 15-digit census tract for the each beat. (HINT: you may find censusr's call_geolocator_latlon function useful)
+
+```{r}
+
+get_census_tract <- function(lat,long) {
+census_tract = call_geolocator_latlon(lat,long)
+return (census_tract)
+}
+
+# Finding beats in the Beats dataset which are not in crime dataset
+df_beats_table[!(df_beats_table %in% df_crime_table)]
+
+#Removing those beats
+Beats_df <-subset(Beats_df, Beats_df$Name!="CITYWIDE" & Beats_df$Name!="E" & Beats_df$Name!="SE" & Beats_df$Name!="SW")
+
+#We have not formed a new dataframe with the column census_tract which has the extracted 15-digit census tract
+beatCensustract <- Beats_df %>% mutate(census_tract =
+mapply(call_geolocator_latlon, Beats_df$Latitude[1:nrow(Beats_df)],Beats_df$Longitude[1:nrow(Beats_df)] ))
+```
+
+
+
+
+We will eventually join the Beats Dataset to the Crime Dataset. We could have joined the two and then found the census tracts for each beat. Would there have been a particular advantage/disadvantage to doing this join first and then finding census tracts? If so, what is it? (NOTE: you do not need to write any code to answer this)
+
+It would have been disadvantageous if we had joined earlier and then found the census tracts. The disadvantages are related to the computation power required. We would have had to run the call_geolocator_latlon and mapply functions on a very large dataset, which would require more computational resources. Now we already have the census tracts for required police beats.
+
+
+##### (f) Extracting FIPS Codes
+
+Once we have the 15-digit census codes, we will break down the code based on information of interest. You can find more information on what these 15 digits represent here: https://transition.fcc.gov/form477/Geo/more_about_census_blocks.pdf.
+
+First, create a column that contains the state code for each beat in the Beats Dataset. Then create a column that contains the county code for each beat. Find the FIPS codes for WA State and King County (the county of Seattle) online. Are the extracted state and county codes what you would expect them to be? Why or why not?
+
+```{r}
+#creating a column for state code
+beatStatecountycodes <-beatCensustract %>%
+mutate(statetcode =
+substr(census_tract,1,2)
+)
+
+#creating a column for county code
+beatCountystatecode <- beatStatecountycodes %>%
+mutate(countycode =
+substr(census_tract,3,5)
+)
+```
+Upon looking the state code for Washington and county code for King county, I found that the state code is 53 and county code is 033. So our observations match with that of the data I found online. I expected them to be 53 and 033 and hence I have verified the results.
+
+
+##### (g) Extracting 11-digit Codes
+
+The census data uses an 11-digit code that consists of the state, county, and tract code. It does not include the block code. To join the census data to the Beats Dataset, we must have this code for each of the beats. Extract the 11-digit code for each of the beats in the Beats Dataset. The 11 digits consist of the 2 state digits, 3 county digits, and 6 tract digits. Add a column with the 11-digit code for each beat.
+
+```{r}
+#Adding 11 digit beat code in a new column
+beat11digitcode <- beatCountystatecode %>%
+mutate(digit11code =
+substr(census_tract,1,11)
+)
+```
+
+##### (h) Extracting 11-digit Codes From Census
+
+Now, we will examine census data (census_edu_data.csv). The data includes counts of education attainment across different census tracts. Note how this data is in a 'wide' format and how it can be converted to a 'long' format. For now, we will work with it as is.
+
+The census data contains a "GEO.id" column. Among other things, this variable encodes the 11-digit code that we had extracted above for each of the police beats. Specifically, when we look at the characters after the characters "US" for values of GEO.id, we see encodings for state, county, and tract, which should align with the beats we had above. Extract the 11-digit code from the GEO.id column. Add a column to the census data with the 11-digit code for each census observation.
+
+```{r}
+censusdata <- read.csv("census_edu_data.csv",
+stringsAsFactors=FALSE)
+
+#adding a new column for 11 digit code in census data and naming the column digit11code
+census11digitcode <- censusdata %>%
+mutate(digit11code =
+substr(GEO.id,10,20))
+
+```
+
+##### (i) Join Datasets
+
+Join the census data with the Beat Dataset using the 11-digit codes as keys. Be sure that you do not lose any of the police beats when doing this join (i.e. your output dataframe should have the same number of rows as the cleaned Beats Dataset - use the correct join). Are there any police beats that do not have any associated census data? If so, how many?
+
+```{r}
+#joining census data with the Beat Dataset using the 11-digit codes as keys
+beat_census <- left_join(beat11digitcode,census11digitcode,
+by = c("digit11code" = "digit11code"))
+View(beat_census)
+
+dim(beat_census)
+```
+On doing a left join, we found that we have not lost any police beats and we do not have any police beats without associated census data.
+
+
+Then, join the Crime Dataset to our joined beat/census data. We can do this using the police beat name. Again, be sure you do not lose any observations from the Crime Dataset. What is the final dimensions of the joined dataset?
+
+```{r}
+crime_df_2$Beat <- as.character(crime_df_2$Beat)
+beat_census$Name <- as.character(beat_census$Name)
+crime_beats_census <- left_join(crime_df_2,beat_census,
+by = c("Beat" = "Name"))
+
+dim(crime_beats_census)
+```
+We havent lost any data in the process and final dimension is 347999 rows and 46 columns.
+
+Once everything is joined, save the final dataset for future use.
