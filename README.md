@@ -2,4 +2,4 @@
 Coursework in R
 This repository contains data wrnagling and analysis using R of the following datasets:\
 -NYC flight data\
--Seattle Crime data\
+-Seattle Crime data
